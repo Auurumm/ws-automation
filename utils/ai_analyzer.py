@@ -5,7 +5,7 @@ from openai import OpenAI
 
 # ── 안전 import: config.py 일부 값이 비어도 앱이 즉사하지 않도록 가드
 try:
-    from config import OPENAI_CONFIG, CONTENT_TYPES, QUALITY_CONFIG
+    from config import OPENAI_CONFIG, CONTENT_TYPES, QUALITY_CONFIG, FILE_CONFIG
 except Exception:
     OPENAI_CONFIG = {"model": "gpt-4o-mini", "api_key": ""}
     CONTENT_TYPES = [
@@ -151,6 +151,41 @@ class AIAnalyzer:
 
             put("BGN 환자 에피소드형", it)
         return out
+
+    def _get_bgn_keyword_fallback_materials(self):
+        """샘플 소재 반환"""
+        return {
+            "키워드 기반 소재": [
+                {
+                    "title": "BGN 검안사가 본 20대 직장인의 라식 여정 - 안경에서 자유로워지기까지",
+                    "content": "매일 아침 안경을 찾는 일상, 운동 중 흘러내리는 안경, 마스크 김서림의 불편함. 상담 중 자주 안내하는 일반적 배경을 과장 없이 덧붙입니다. 마스크 때문에 안경 김이 서려서 너무 불편했어요. 이런 고민을 가진 분들이 정말 많습니다. 특히 요즘 같은 때에는 하루 종일 마스크를 써야 하니까 정말 답답하실 거예요.",
+                    "keywords": ["BGN", "20대", "직장인", "라식", "안경", "불편함", "결심", "일상"],
+                    "timestamp": "초반 10-15분",
+                    "usage_point": "검안사 시점 공감대 형성",
+                    "staff_perspective": "검안사",
+                    "target_audience": "예비 환자",
+                    "direct_quote": "마스크 때문에 안경 김이 서려서 너무 불편했어요.",
+                    "source_quote": "마스크 때문에 안경 김이 서려서 너무 불편했어요.",
+                    "evidence_span": [85, 110],
+                    "bgn_brand_fit": "일상의 불편함 공감",
+                    "emotion_tone": "공감과 이해"
+                },
+                {
+                    "title": "BGN 간호사가 경험한 특별한 하루 - 첫 수술을 앞둔 환자분과의 만남",
+                    "content": "처음 수술을 받으시는 분들은 정말 많이 긴장하세요. 손이 떨리시는 분도 계시고, 계속 질문을 하시는 분도 계시죠. 오늘도 그런 분이 계셨어요. 처음에는 정말 불안해하셨는데, 차근차근 설명해드리고 옆에서 계속 말씀드렸더니 많이 안정되시더라고요. 이런 순간들이 정말 보람을 느끼게 해줍니다.",
+                    "keywords": ["BGN", "간호사", "첫 수술", "불안", "안정", "보람", "환자", "돌봄"],
+                    "timestamp": "중반 20-25분",
+                    "usage_point": "간호사의 따뜻한 케어 스토리",
+                    "staff_perspective": "간호사",
+                    "target_audience": "예비 환자",
+                    "direct_quote": "처음에는 정말 불안해하셨는데, 차근차근 설명해드리고 옆에서 계속 말씀드렸더니 많이 안정되시더라고요.",
+                    "source_quote": "처음에는 정말 불안해하셨는데, 차근차근 설명해드리고 옆에서 계속 말씀드렸더니 많이 안정되시더라고요.",
+                    "evidence_span": [120, 170],
+                    "bgn_brand_fit": "따뜻한 돌봄과 전문성",
+                    "emotion_tone": "따뜻함과 안정감"
+                }
+            ]
+        }
 
     # 구버전 호환
     def analyze_interview_content(self, content: str):

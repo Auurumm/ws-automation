@@ -31,8 +31,8 @@ def display_selected_material():
         
         with col1:
             st.write(f"**📋 내용**: {material['content']}")
-            st.write(f"**⏰ 시간대**: {material['timestamp']}")
-            st.write(f"**🎯 활용 포인트**: {material['usage_point']}")
+            st.write(f"**⏰ 시간대**: {material.get('timestamp', '미지정')}")
+            st.write(f"**🎯 활용 포인트**: {material.get('usage_point', '일반적 활용')}")
         
         with col2:
             # 키워드 정보
@@ -49,6 +49,13 @@ def display_selected_material():
 def configure_blog_settings():
     """블로그 작성 설정 (BGN 톤앤매너 중심)"""
     st.subheader("📝 블로그 작성 설정")
+    
+    # 초기값 설정
+    if 'creativity' not in st.session_state:
+        st.session_state.creativity = 0.9
+    if 'top_p' not in st.session_state:
+        st.session_state.top_p = 0.9
+    
     st.session_state.creativity = st.slider("창의성 (temperature)", 0.0, 1.2, 0.9, 0.1)
     st.session_state.top_p = st.slider("다양성 (top_p)", 0.1, 1.0, 0.9, 0.05)
 
@@ -57,6 +64,9 @@ def configure_blog_settings():
     
     col1, col2 = st.columns(2)
     with col1:
+        if 'blog_style' not in st.session_state:
+            st.session_state.blog_style = "검안사의 일상 경험담 (친근한 1인칭)"
+            
         st.session_state.blog_style = st.selectbox(
             "작성 스타일",
             [
@@ -89,6 +99,10 @@ def configure_blog_settings():
             "고품질 (2,500자 이상)", 
             "프리미엄 (3,000자 이상)"
         ]
+        
+        if 'content_length' not in st.session_state:
+            st.session_state.content_length = quality_options[0]
+            
         st.session_state.content_length = st.selectbox(
             "콘텐츠 품질", 
             quality_options,
@@ -97,11 +111,22 @@ def configure_blog_settings():
         
         # BGN 톤앤매너 특성 체크박스
         st.markdown("**🎯 BGN 톤앤매너 특성**")
+        
+        if 'use_emotions' not in st.session_state:
+            st.session_state.use_emotions = True
+        if 'use_casual_talk' not in st.session_state:
+            st.session_state.use_casual_talk = True
+        if 'use_empathy' not in st.session_state:
+            st.session_state.use_empathy = True
+            
         st.session_state.use_emotions = st.checkbox("감정 표현 사용 (:), ㅠㅠ, ... 등)", value=True)
         st.session_state.use_casual_talk = st.checkbox("자연스러운 구어체 혼용", value=True)
         st.session_state.use_empathy = st.checkbox("담담한 공감 톤", value=True)
     
     # 추가 요청사항
+    if 'additional_request' not in st.session_state:
+        st.session_state.additional_request = ""
+        
     st.session_state.additional_request = st.text_area(
         "추가 요청사항 (선택사항)",
         height=100,
@@ -210,7 +235,7 @@ def generate_sample_blog():
 
 그 말씀을 들으면서 저도 마음이 좀 아팠습니다. 왜냐하면 정말 많은 분들이 이런 고민을 안고 계시거든요. 
 
-{material['timestamp']}에 진행된 상담이었는데, 처음에는 조금 긴장하셨던 것 같아요. 그래도 이야기를 나누면서 점점 마음을 여시더라고요.
+{material.get('timestamp', '오늘')}에 진행된 상담이었는데, 처음에는 조금 긴장하셨던 것 같아요. 그래도 이야기를 나누면서 점점 마음을 여시더라고요.
 
 이런 분들을 만날 때마다 항상 생각하는 게 있어요. 겉으로는 단순해 보이는 문제일 수도 있지만, 그 뒤에는 정말 긴 고민의 시간들이 있었을 거라는 거죠.
 
@@ -234,7 +259,7 @@ def generate_sample_blog():
 
 ## 그래서 더 세심하게 봐드렸어요
 
-{material['usage_point']}
+{material.get('usage_point', '이런 케이스는 정말 조심스럽거든요.')}
 
 사실 이런 케이스는 정말 조심스럽거든요. 단순히 기술적인 문제가 아니라, 그분의 일상 전체가 바뀌는 일이니까요.
 
