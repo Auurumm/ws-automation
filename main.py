@@ -1,3 +1,9 @@
+# main.py 최상단에 추가
+from dotenv import load_dotenv
+load_dotenv()  # .env 파일 로드
+
+# 기존 imports...
+from components.blog_writer import render_blog_writer_page
 import streamlit as st
 import os
 from dotenv import load_dotenv
