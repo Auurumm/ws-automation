@@ -1,0 +1,63 @@
+# 4. .gitignore 업데이트
+@"
+# 환경변수 파일 (절대 업로드 금지)
+.env
+*.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
+# API 키 관련 파일
+*api_key*
+*secret*
+*token*
+config.json
+secrets.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Streamlit
+.streamlit/secrets.toml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 로그 파일
+*.log
+logs/
+"@ | Out-File -FilePath ".gitignore" -Encoding UTF8
