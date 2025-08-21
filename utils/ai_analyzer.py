@@ -2,18 +2,43 @@
 import json
 import streamlit as st
 from openai import OpenAI
-from config import OPENAI_CONFIG, CONTENT_TYPES, QUALITY_CONFIG, FILE_CONFIG
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 안전 import: config.py 일부 상수가 없거나 이름이 달라도 앱이 즉사하지 않도록 기본값 보유
+# ─────────────────────────────────────────────────────────────────────────────
+try:
+    from config import OPENAI_CONFIG, CONTENT_TYPES, QUALITY_CONFIG, FILE_CONFIG
+except Exception:
+    # 최소 구동을 위한 안전 기본값
+    OPENAI_CONFIG = {"model": "gpt-4o-mini", "api_key": ""}
+    CONTENT_TYPES = [
+        "BGN 환자 에피소드형",
+        "BGN 검사·과정형",
+        "BGN 센터 운영/분위기형",
+        "BGN 직원 성장기형",
+        "BGN 환자 질문 FAQ형",
+    ]
+    QUALITY_CONFIG = {
+        "표준 BGN (2,000자)": {
+            "min_chars": 2000,
+            "target_chars": 2200,
+            "max_tokens": 4500,
+        }
+    }
+    FILE_CONFIG = {"max_chars_for_analysis": 15000}
 
 
 class AIAnalyzer:
     def __init__(self, api_key: str | None = None):
-        api_key = api_key or OPENAI_CONFIG.get("api_key")
+        api_key = api_key or OPENAI_CONFIG.get("api_key", "")
         self.client = OpenAI(api_key=api_key)
         self.config = OPENAI_CONFIG
 
-    # ===================== 인터뷰 → 소재 도출 =====================
+    # ======================================================================
+    # 인터뷰 → 소재 도출
+    # ======================================================================
     def analyze_interview_content_keyword_based(self, content: str):
-        """인터뷰 전문에서 BGN 톤의 블로그 소재를 도출하고 탭 키에 맞게 분류."""
+        """인터뷰 전문에서 BGN 톤의 블로그 소재를 도출하고 탭 키(CONTENT_TYPES)에 맞게 분류."""
         content = content or ""
         max_len = FILE_CONFIG.get("max_chars_for_analysis", 15000)
         if len(content) > max_len:
@@ -29,7 +54,7 @@ class AIAnalyzer:
         validated = self._validate_bgn_keyword_materials(payload)
         categorized = self._categorize_bgn_materials(validated.get("키워드 기반 소재", []))
 
-        # 모든 탭이 비었으면 샘플로 채움
+        # 모든 탭 비었으면 샘플 투입
         if not any(categorized.get(k) for k in CONTENT_TYPES):
             fb = self._get_bgn_keyword_fallback_materials()["키워드 기반 소재"]
             categorized = self._categorize_bgn_materials(fb)
@@ -38,7 +63,7 @@ class AIAnalyzer:
         return categorized
 
     def _analyze_keywords_for_bgn(self, content: str) -> dict:
-        """모델 호출: 인터뷰 ‘근거 문장’을 포함하도록 강제 + 공신력 있는 일반설명 보강 허용(과장/후기 금지)"""
+        """모델 호출 프롬프트: 인터뷰 '근거 문장' 포함을 강제 + 공신력 있는 일반설명 보강 허용(과장/후기 금지)."""
         prompt = f"""
 다음은 BGN밝은눈안과(잠실점) 직원 인터뷰 전문 일부입니다.
 이 텍스트를 기반으로 블로그로 확장 가능한 '소재'를 추출하세요.
@@ -59,7 +84,7 @@ class AIAnalyzer:
       "target_audience": "예비 환자/기존 환자/일반인",
       "direct_quote": "직접 인용(있다면)",
       "source_quote": "인터뷰 본문에서 해당 소재를 뒷받침하는 문장(필수)",
-      "evidence_span": [시작_문자_인덱스, 끝_문자_인덱스], 
+      "evidence_span": [시작_문자_인덱스, 끝_문자_인덱스],
       "bgn_brand_fit": "따뜻함/전문성/신뢰 연결",
       "emotion_tone": "감정 톤"
     }}
@@ -93,7 +118,15 @@ class AIAnalyzer:
         out = {"키워드 기반 소재": []}
         items = (materials or {}).get("키워드 기반 소재", [])
         for it in items:
-            req = ["title", "content", "keywords", "usage_point", "staff_perspective", "source_quote", "evidence_span"]
+            req = [
+                "title",
+                "content",
+                "keywords",
+                "usage_point",
+                "staff_perspective",
+                "source_quote",
+                "evidence_span",
+            ]
             if not all(k in it for k in req):
                 continue
             c = it.get("content", "")
@@ -106,7 +139,7 @@ class AIAnalyzer:
             if (not isinstance(span, list)) or len(span) != 2:
                 continue
             s, e = span
-            if not (isinstance(s, int) and isinstance(e, int)):  # 숫자형 보장
+            if not (isinstance(s, int) and isinstance(e, int)):
                 continue
             if not (0 <= s < e <= len(c)):
                 continue
@@ -120,7 +153,7 @@ class AIAnalyzer:
         return out
 
     def _categorize_bgn_materials(self, items: list) -> dict:
-        """UI 탭 구조와 동일한 키로 분류."""
+        """UI 탭 구조(CONTENT_TYPES)와 동일한 키로 분류."""
         out = {k: [] for k in CONTENT_TYPES}
 
         def put(cat, it):
@@ -145,11 +178,13 @@ class AIAnalyzer:
             put("BGN 환자 에피소드형", it)  # 기본 라우팅
         return out
 
-    # ----- 옛 API 호환 (기존 코드가 이 이름을 호출) -----
+    # ── 구버전 호환: 예전 코드가 이 이름을 호출할 수 있음
     def analyze_interview_content(self, content: str):
         return self.analyze_interview_content_keyword_based(content)
 
-    # ===================== 블로그 초안 생성 =====================
+    # ======================================================================
+    # 블로그 초안 생성 (아웃라인 → 초안 → 부족 시 보강)
+    # ======================================================================
     def _infer_role_name_from_filename(self, filename: str):
         """
         예) '검안사_김서연_인터뷰.txt' → ('검안사','김서연')
@@ -189,7 +224,10 @@ class AIAnalyzer:
             if r: staff_role = r
             if n: staff_name = n
 
-        cfg = QUALITY_CONFIG.get(length, QUALITY_CONFIG["표준 BGN (2,000자)"])
+        cfg = QUALITY_CONFIG.get(
+            length,
+            {"min_chars": 2000, "target_chars": 2200, "max_tokens": 4500},
+        )
 
         # 입력 길이 제한
         if len(material.get("content", "")) > 8000:
@@ -241,7 +279,7 @@ class AIAnalyzer:
 - 활용 포인트: {material.get('usage_point','')}
 - 추가 요청: {additional_request or '없음'}
 
-요청: H2/H3 헤딩 구조의 JSON 아웃라인만 출력.
+요청: H2/H3 헤딩 구조의 JSON만 출력.
 필드: title, h2_sections[{{"h2": str, "bullets": [str], "h3": [str]}}]
 """
         res = self.client.chat.completions.create(
