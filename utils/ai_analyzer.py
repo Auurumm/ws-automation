@@ -5,7 +5,7 @@ from openai import OpenAI
 
 # ── 안전 import: config.py 일부 값이 비어도 앱이 즉사하지 않도록 가드
 try:
-    from config import OPENAI_CONFIG, CONTENT_TYPES, QUALITY_CONFIG, FILE_CONFIG
+    from config import OPENAI_CONFIG, CONTENT_TYPES, QUALITY_CONFIG
 except Exception:
     OPENAI_CONFIG = {"model": "gpt-4o-mini", "api_key": ""}
     CONTENT_TYPES = [
