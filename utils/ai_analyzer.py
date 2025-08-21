@@ -547,3 +547,11 @@ def get_sample_materials():
             return self._categorize_bgn_materials(fb)
 
         return out
+    
+# 클래스 AIAnalyzer 내부에 존재해야 함
+def analyze_interview_content(self, content: str):
+    """
+    (호환용) 예전 코드가 호출하는 진입점.
+    내부적으로 최신 키워드 기반/카테고리화 로직을 호출합니다.
+    """
+    return self.analyze_interview_content_keyword_based(content)
