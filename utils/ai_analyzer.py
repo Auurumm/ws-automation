@@ -1,4 +1,4 @@
-import json
+﻿import json
 import streamlit as st
 from openai import OpenAI
 from config import OPENAI_CONFIG, CONTENT_TYPES, QUALITY_CONFIG
@@ -312,8 +312,10 @@ BGN밝은눈안과(잠실점) 블로그 포스트를 BGN 고유의 톤앤매너�
             st.info(f"📄 텍스트 길이: {content_length:,}자 - BGN 맞춤 키워드 분석")
             return self._analyze_keywords_for_bgn(content)
         else:
-            st.warning(f"📄 텍스트 길이: {content_length:,}자 - 청크 단위 BGN 분석")
-            return self._analyze_keywords_with_chunks_bgn(content)
+            st.warning(f"📄 텍스트 길이: {content_length:,}자 - BGN 앞부분 분석으로 진행")
+            # 앞부분만 분석
+            truncated_content = content[:15000]
+            return self._analyze_keywords_for_bgn(truncated_content)
     
     def _analyze_keywords_for_bgn(self, content):
         """BGN 브랜드 관점에서 키워드 분석"""
