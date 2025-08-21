@@ -1,72 +1,58 @@
 # utils/session_manager.py
 import streamlit as st
+
+# config에서 STEP_INFO만 가져옵니다.
+# 만약 config에 없으면(ImportError) 기본값을 사용해서 앱이 죽지 않도록 합니다.
 try:
     from config import STEP_INFO
-except ImportError as e:
-    # 배포 경로 문제로 config 모듈 로딩 실패 시 방어
-    STEP_INFO = ["1️⃣ 인터뷰 업로드","2️⃣ 소재 도출","3️⃣ 블로그 작성","4️⃣ 이미지 생성","5️⃣ 발행"]
+except Exception:
+    STEP_INFO = [
+        {"key": "file_upload",        "label": "파일 업로드"},
+        {"key": "material_analysis",  "label": "소재 분석"},
+        {"key": "blog_writer",        "label": "블로그 작성"},
+        {"key": "image_generator",    "label": "이미지 생성"},
+        {"key": "wordpress_publish",  "label": "워드프레스 발행"},
+    ]
 
-
-def _ordered_keys():
-    return list(STEP_INFO.keys())
-
-def _first_key():
-    return _ordered_keys()[0]
-
-def _last_key():
-    return _ordered_keys()[-1]
+def _ensure_session_defaults():
+    if "step_index" not in st.session_state:
+        st.session_state.step_index = 0
+    if "materials" not in st.session_state:
+        st.session_state.materials = []          # 업로드/추출된 원문들
+    if "analysis" not in st.session_state:
+        st.session_state.analysis = {}           # 소재 분석 결과
+    if "draft" not in st.session_state:
+        st.session_state.draft = ""              # 블로그 초안
+    if "images" not in st.session_state:
+        st.session_state.images = []             # 생성 이미지 경로/URL
+    if "publish_result" not in st.session_state:
+        st.session_state.publish_result = None   # WP 발행 결과
 
 def initialize_session_state():
-    """세션 상태 초기화"""
-    if "step_key" not in st.session_state:
-        st.session_state.step_key = _first_key()
+    """앱 시작 시 1회 호출: 세션 키 기본값 구성"""
+    _ensure_session_defaults()
 
-    # 공통 상태 버킷(필요 시 추가)
-    st.session_state.setdefault("uploaded_file_info", None)   # 업로드된 파일 메타/텍스트
-    st.session_state.setdefault("material_result", None)       # 소재 분석 결과
-    st.session_state.setdefault("blog_draft", None)            # 블로그 초안
-    st.session_state.setdefault("image_prompts", [])           # 이미지 프롬프트 리스트
-    st.session_state.setdefault("generated_images", [])        # 생성된 이미지들(URL/바이너리)
-    st.session_state.setdefault("publish_result", None)        # 워드프레스 발행 결과/에러
+def get_total_steps() -> int:
+    return len(STEP_INFO)
 
-def get_step_info(key=None):
-    """현재 또는 지정 key의 step info 반환"""
-    if key is None:
-        key = st.session_state.get("step_key", _first_key())
-    info = STEP_INFO.get(key, None)
-    if info is None:
-        return {"key": _first_key(), **STEP_INFO[_first_key()]}
-    return {"key": key, **info}
+def get_step_info(index: int = None) -> dict:
+    """현재(또는 지정 index의) 스텝 정보 반환"""
+    _ensure_session_defaults()
+    idx = st.session_state.step_index if index is None else index
+    idx = max(0, min(idx, len(STEP_INFO) - 1))
+    return STEP_INFO[idx]
 
-def move_to_step(key: str):
-    """특정 step key로 이동"""
-    if key in STEP_INFO:
-        st.session_state.step_key = key
-    else:
-        # 잘못된 key가 들어오면 처음으로
-        st.session_state.step_key = _first_key()
+def move_to_step(index: int):
+    """지정 인덱스로 이동"""
+    _ensure_session_defaults()
+    st.session_state.step_index = max(0, min(index, len(STEP_INFO) - 1))
 
 def next_step():
     """다음 단계로 이동"""
-    keys = _ordered_keys()
-    cur = st.session_state.get("step_key", _first_key())
-    i = keys.index(cur)
-    if i < len(keys) - 1:
-        st.session_state.step_key = keys[i + 1]
-    else:
-        st.session_state.step_key = _last_key()
+    _ensure_session_defaults()
+    st.session_state.step_index = min(st.session_state.step_index + 1, len(STEP_INFO) - 1)
 
-def prev_step():
-    """이전 단계로 이동"""
-    keys = _ordered_keys()
-    cur = st.session_state.get("step_key", _first_key())
-    i = keys.index(cur)
-    if i > 0:
-        st.session_state.step_key = keys[i - 1]
-    else:
-        st.session_state.step_key = _first_key()
-
-def step_title():
-    """현재 단계 제목(헤더용)"""
-    info = get_step_info()
-    return info["title"]
+def reset_workflow():
+    """전체 워크플로우 초기화"""
+    st.session_state.clear()
+    _ensure_session_defaults()

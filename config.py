@@ -1,45 +1,33 @@
 # config.py
-from collections import OrderedDict
+# 전역 설정 및 워크플로우 스텝 정보
+
 import os
 
-__all__ = [
-    "APP_NAME",
-    "FILE_CONFIG",
-    "STEP_INFO",
-    "OPENAI_MODEL",
-    "ENV_VARS_REQUIRED",
-]
-
-# 앱 이름
-APP_NAME = "BGN 블로그 자동화"
-
-# 업로드 파일 설정
+# --- 앱/파일 업로드 관련 설정 ---
 FILE_CONFIG = {
-    "allowed_exts": [".txt", ".md", ".docx", ".pdf"],
-    "max_size_mb": 20,
-    # Streamlit file_uploader accept param용 (문자열)
-    "accept": ".txt,.md,.docx,.pdf",
+    "upload_dir": "uploads",
+    "allowed_exts": [".pdf", ".docx", ".txt", ".md"],
+    "max_mb": 25,
 }
 
-# 단계(라우팅) 정의: key 순서가 곧 진행 순서입니다.
-# components/*.py 에서 이 key를 기반으로 next_step() 등이 동작합니다.
-STEP_INFO = OrderedDict(
-    [
-        ("upload", {"index": 0, "title": "파일 업로드"}),
-        ("material", {"index": 1, "title": "소재 분석"}),
-        ("blog", {"index": 2, "title": "블로그 초안"}),
-        ("image", {"index": 3, "title": "이미지 생성"}),
-        ("publish", {"index": 4, "title": "워드프레스 발행"}),
-    ]
-)
+# --- OpenAI / 이미지 등 API 키 로딩 ---
+# 환경변수에서 불러오되, 값이 없으면 빈 문자열로 둡니다.
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+IMAGE_API_KEY = os.environ.get("IMAGE_API_KEY", "")
 
-# OpenAI 모델(원하시는 모델명으로 교체 가능)
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+# 모델 설정(필요 시 앱 내부에서 사용)
+LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+LLM_TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE", "0.4"))
 
-# 필수 환경변수 점검용(부족해도 앱은 켜지지만 경고 띄울 때 사용)
-ENV_VARS_REQUIRED = [
-    "OPENAI_API_KEY",        # OpenAI
-    "WP_BASE_URL",           # WordPress
-    "WP_USERNAME",
-    "WP_APP_PASSWORD",
+# --- 워크플로우 단계 정의 ---
+# key: 내부 라우팅/상태 키, label: UI에 보일 이름
+STEP_INFO = [
+    {"key": "file_upload",        "label": "파일 업로드"},
+    {"key": "material_analysis",  "label": "소재 분석"},
+    {"key": "blog_writer",        "label": "블로그 작성"},
+    {"key": "image_generator",    "label": "이미지 생성"},
+    {"key": "wordpress_publish",  "label": "워드프레스 발행"},
 ]
+
+# 편의 상수
+TOTAL_STEPS = len(STEP_INFO)
