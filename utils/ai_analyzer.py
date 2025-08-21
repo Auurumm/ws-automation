@@ -358,10 +358,10 @@ BGN 브랜드 추출 원칙:
                     materials = json.loads(json_str)
                     
                     # BGN 품질 검증
-                    validated_materials = self._validate_bgn_keyword_materials(materials)
-                    
+                    categorized = self._categorize_bgn_materials(validated_materials.get("키워드 기반 소재", []))
+
                     st.success("✅ BGN 브랜드 맞춤 키워드 분석 완료!")
-                    return validated_materials
+                    return categorized
                 else:
                     raise json.JSONDecodeError("JSON 형식 찾기 실패", result, 0)
                     
@@ -483,3 +483,67 @@ def get_sample_materials():
             }
         ]
     }
+
+    def _categorize_bgn_materials(self, items):
+        """
+        UI 탭 구조에 맞게 소재를 분류해서 반환.
+        반환 구조:
+        {
+        "BGN 환자 에피소드": [...],
+        "BGN 검사·과정": [...],
+        "BGN 센터 운영/분위기": [...],
+        "BGN 직원 성장기": [...],
+        "BGN 환자 질문 FAQ": [...],
+        "키워드 기반 소재": [...]  # 원본도 유지(선택)
+        }
+        """
+        # 기본 컨테이너
+        out = {
+            "BGN 환자 에피소드": [],
+            "BGN 검사·과정": [],
+            "BGN 센터 운영/분위기": [],
+            "BGN 직원 성장기": [],
+            "BGN 환자 질문 FAQ": [],
+            "키워드 기반 소재": items[:]  # 원본 보존(원하시면 삭제 가능)
+        }
+
+        # 간단한 규칙 기반 분류(키워드/내용/직무)
+        def put(cat, it): out[cat].append(it)
+
+        for it in items:
+            text = f"{it.get('title','')} {it.get('content','')} {', '.join(it.get('keywords', []))}".lower()
+            role = (it.get('staff_perspective') or "").lower()
+
+            # 1) 환자 에피소드: 수술/회복/후기/변화/감정
+            if any(k in text for k in ["수술", "회복", "후기", "일상 변화", "감동", "울컥"]) \
+            or "예비 환자" in (it.get("target_audience","")):
+                put("BGN 환자 에피소드", it); continue
+
+            # 2) 검사·과정: 검사/장비/과정/측정/결과/프로세스
+            if any(k in text for k in ["검사", "장비", "과정", "측정", "결과", "프로세스", "진단"]):
+                put("BGN 검사·과정", it); continue
+
+            # 3) 센터 운영/분위기: 대기시간/예약/서비스/분위기/운영/시스템
+            if any(k in text for k in ["운영", "분위기", "대기시간", "예약", "서비스", "시스템", "원무"]) \
+            or "원무" in role:
+                put("BGN 센터 운영/분위기", it); continue
+
+            # 4) 직원 성장기: 신입/멘토링/교육/배움/첫 경험/성장
+            if any(k in text for k in ["신입", "멘토", "멘토링", "교육", "배움", "첫 수술", "성장"]) \
+            or "신입" in role:
+                put("BGN 직원 성장기", it); continue
+
+            # 5) 환자 질문 FAQ: 언제/가능/방법/주기/주의/자주 묻는 질문
+            if any(k in text for k in ["질문", "언제", "가능", "방법", "주의", "faq", "자주 묻는"]):
+                put("BGN 환자 질문 FAQ", it); continue
+
+            # 아무 데도 안 들어가면, 내용 기반으로 안전 분류
+            put("BGN 환자 에피소드", it)
+
+        # 비어있는 탭 최소 채우기(폴백 재활용)
+        if not any(out[cat] for cat in ["BGN 환자 에피소드","BGN 검사·과정","BGN 센터 운영/분위기","BGN 직원 성장기","BGN 환자 질문 FAQ"]):
+            # 전부 빈 경우: 폴백 생성
+            fb = self._get_bgn_keyword_fallback_materials()["키워드 기반 소재"]
+            return self._categorize_bgn_materials(fb)
+
+        return out
