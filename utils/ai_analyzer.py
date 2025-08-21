@@ -9,239 +9,187 @@ class AIAnalyzer:
         self.client = OpenAI(api_key=api_key)
         self.config = OPENAI_CONFIG
     
-    def generate_blog_content_bgn_style(self, selected_material, style, length, additional_request, bgn_style_params):
-        """BGN 톤앤매너로 블로그 콘텐츠 생성"""
-        
-        material = selected_material['data']
-        material_type = selected_material['type']
-        
-        # BGN 스타일 매개변수 추출
-        staff_role = bgn_style_params.get('staff_role', '검안사')
-        staff_name = bgn_style_params.get('staff_name', '김서연')
-        use_emotions = bgn_style_params.get('use_emotions', True)
-        use_casual_talk = bgn_style_params.get('use_casual_talk', True)
-        use_empathy = bgn_style_params.get('use_empathy', True)
-        
-        # 목표 글자수 설정
-        length_config = {
-            "표준 품질 (2,000자 이상)": {"min_chars": 2000, "target_chars": 2200, "max_tokens": 3500},
-            "고품질 (2,500자 이상)": {"min_chars": 2500, "target_chars": 2700, "max_tokens": 4000},
-            "프리미엄 (3,000자 이상)": {"min_chars": 3000, "target_chars": 3200, "max_tokens": 4500}
-        }
-        
-        config = length_config.get(length, length_config["표준 품질 (2,000자 이상)"])
-        
-        # 직접 인용구 및 키워드 추출
-        direct_quote = material.get('direct_quote', '')
-        keywords = material.get('keywords', [])
-        
-        prompt = f"""
-BGN밝은눈안과(잠실점) 블로그 포스트를 BGN 고유의 톤앤매너로 작성해주세요. **반드시 {config['min_chars']}자 이상**으로 작성해야 합니다.
+    # --- ai_analyzer.py: drop-in replacement for generate_blog_content_bgn_style ---
 
-📋 소재 정보:
-- 유형: {material_type}
+def generate_blog_content_bgn_style(
+    self,
+    selected_material,
+    style,
+    length,
+    additional_request,
+    bgn_style_params,
+    *,
+    temperature=0.9,
+    top_p=0.9
+):
+    """
+    2-step 생성(아웃라인→본문) + 사후 톤 보정.
+    - 프롬프트를 간결화해 모델을 과도하게 제약하지 않음
+    - 글자수/톤 검증은 사후 처리
+    """
+
+    material = selected_material['data']
+    staff_role = bgn_style_params.get('staff_role', '검안사')
+    staff_name = bgn_style_params.get('staff_name', '김서연')
+
+    length_config = {
+        "표준 품질 (2,000자 이상)": {"min_chars": 2000, "target_chars": 2200, "max_tokens": 4500},
+        "고품질 (2,500자 이상)": {"min_chars": 2500, "target_chars": 2800, "max_tokens": 6000},
+        "프리미엄 (3,000자 이상)": {"min_chars": 3000, "target_chars": 3300, "max_tokens": 7000}
+    }
+    cfg = length_config.get(length, length_config["표준 품질 (2,000자 이상)"])
+    
+    # 🔽 이 부분에 추가
+    # 너무 긴 입력은 잘라내기 (토큰 초과 방지)
+    if len(material['content']) > 8000:
+        material['content'] = material['content'][:8000]
+
+    # ---- 1) OUTLINE (짧고 명확) ----
+    outline = self._make_outline(
+        material=material,
+        style=style,
+        staff_role=staff_role,
+        staff_name=staff_name,
+        min_chars=cfg["min_chars"],
+        additional_request=additional_request,
+        temperature=temperature,
+        top_p=top_p
+    )
+
+    # ---- 2) DRAFT 본문 ----
+    draft = self._draft_from_outline(
+        outline=outline,
+        material=material,
+        target_chars=cfg["target_chars"],
+        staff_role=staff_role,
+        staff_name=staff_name,
+        temperature=temperature,
+        top_p=top_p,
+        max_tokens=cfg["max_tokens"]
+    )
+
+    # ---- 3) 사후 톤 보정(필요 시) ----
+    if len(draft) < cfg["min_chars"]:
+        shortage = cfg["min_chars"] - len(draft)
+        draft = self._style_pass(
+            text=draft,
+            staff_role=staff_role,
+            staff_name=staff_name,
+            shortage=shortage,
+            temperature=min(temperature, 0.8),
+            top_p=top_p,
+            max_tokens=cfg["max_tokens"]
+        )
+
+    # 최종 검증 및 리턴
+    bgn_validation = self._validate_bgn_style(draft, cfg["min_chars"])
+    return draft
+
+# --- helpers ---
+
+def _make_outline(self, material, style, staff_role, staff_name, min_chars, additional_request, temperature, top_p):
+    prompt = f"""
+다음 내용을 바탕으로 블로그 아웃라인을 작성하세요.
+
+- 병원: BGN밝은눈안과(잠실점)
+- 화자: {staff_role} {staff_name} (1인칭)
+- 글 최소 분량: {min_chars}자 이상
+- 글 분위기: 따뜻함과 전문성의 균형, 과장/권유 금지
+- 스타일: {style}
+- 소재 제목: {material['title']}
+- 핵심 내용: {material['content']}
+- 활용 포인트: {material.get('usage_point','')}
+- 추가 요청: {additional_request or '없음'}
+
+요청: H2/H3 헤딩 구조의 JSON 아웃라인을 출력.
+필드: title, h2_sections[{ {{"h2": str, "bullets": [str], "h3": [str]}} }]
+JSON만 출력.
+"""
+    res = self.client.chat.completions.create(
+        model=self.config["model"],
+        messages=[
+            {"role": "system", "content": "간결한 편집자. 사용자 요청만 JSON으로 응답."},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=temperature,
+        top_p=top_p,
+        max_tokens=1200,
+    ).choices[0].message.content
+
+    try:
+        import json
+        start, end = res.find("{"), res.rfind("}") + 1
+        return json.loads(res[start:end])
+    except Exception:
+        # 최소 안전 아웃라인
+        return {
+            "title": material["title"],
+            "h2_sections": [
+                {"h2": "오늘도 이런 일이 있었어요", "bullets": [], "h3": []},
+                {"h2": "사실 저희도 많이 배워요", "bullets": [], "h3": []},
+                {"h2": "그래서 더 세심하게 봐드렸어요", "bullets": [], "h3": []},
+                {"h2": "비슷한 고민을 하고 계신다면", "bullets": [], "h3": []},
+                {"h2": "마지막으로 하고 싶은 말", "bullets": [], "h3": []},
+            ],
+        }
+
+def _draft_from_outline(self, outline, material, target_chars, staff_role, staff_name, temperature, top_p, max_tokens):
+    import json
+    prompt = f"""
+아래 JSON 아웃라인과 소재로 블로그 초안을 작성하세요.
+
+규칙(필수 최소화):
+- 시작 멘트: "안녕하세요, BGN밝은눈안과(잠실점) {staff_role} {staff_name}입니다."
+- 1인칭 시점 유지, 과장/권유 금지, 자연스러운 구어체 허용
+- 총 분량 목표: 약 {target_chars}자 (모자라면 상관없음)
+- H2/H3 구조 유지
+- 이미지 ALT/홍보 멘트/후기형 과장 문구 금지
+
+아웃라인 JSON:
+{json.dumps(outline, ensure_ascii=False)}
+
+소재 요약:
 - 제목: {material['title']}
 - 내용: {material['content']}
-- 키워드: {', '.join(keywords[:8]) if keywords else '없음'}
-- 시간대: {material['timestamp']}
-- 활용 포인트: {material['usage_point']}
-{f"- 직접 인용: {direct_quote}" if direct_quote else ""}
-
-👤 BGN 화자 설정:
-- 직무: {staff_role}
-- 이름: {staff_name}
-- 스타일: {style}
-
-🎯 BGN 고유 톤앤매너 (절대 준수):
-- **시작**: "안녕하세요, **BGN밝은눈안과(잠실점)** {staff_role} **{staff_name}**입니다."
-- **종료**: "이상으로 **BGN밝은눈안과(잠실점)** {staff_role} **{staff_name}**이었습니다. 오늘도 여러분의 소중한 눈을 생각하며..."
-
-🗣️ BGN 말투 특징 (자연스럽게 혼용):
-- **다양한 종결어미**: 해요/습니다/죠/거든요/네요/더라고요/라고요/이에요 등 자연스럽게 섞어서 사용
-- **감정 표현**: {':), ㅠㅠ, ..., 웃음이 나왔어요, 울컥했습니다' if use_emotions else '절제된 감정 표현'}
-- **구어체 표현**: {'자연스러운 말줄임표, 감탄사, 웃음 표현 사용' if use_casual_talk else '정중한 구어체'}
-- **공감 표현**: {'괜찮으세요, 저희가 옆에 있잖아요, 이해해요' if use_empathy else '전문적 조언'}
-
-💡 BGN 특화 표현법:
-- "오늘도 이런 일이 있었어요" (일상 에피소드 시작)
-- "그 말에 저도 모르게..." (자연스러운 감정 반응)
-- "사실 저희도 많이 배워요" (겸손한 자세)
-- "이게 별거 아닌 것 같아도 저는 중요하게 생각해요" (세심한 관심)
-- "무리하게 권하지는 않을 거예요" (강요 없는 조언)
-- "편하게 물어보세요" (친근한 접근)
-
-{f"🔧 추가 요청사항: {additional_request}" if additional_request else ""}
-
-📝 BGN 블로그 구조 (각 섹션 충분히 길게, 최소 글자수 보장):
-
-# [환자 경험 중심의 따뜻한 제목]
-
-안녕하세요, **BGN밝은눈안과(잠실점)** {staff_role} **{staff_name}**입니다.
-
-## 오늘도 이런 일이 있었어요
-(**최소 5-6문단**, 일상 에피소드로 자연스럽게 시작)
-- "아침부터 한 분이 들어오시더라고요..."
-- 환자의 첫인상과 상황 묘사
-- 상담 초기의 분위기와 대화
-- {staff_role}로서의 첫 느낌과 생각
-- 환자의 구체적 고민과 걱정
-- 소재 내용을 자연스럽게 녹여내기
-
-## 사실 저희도 많이 배워요
-(**최소 5-6문단**, 겸손하면서도 전문적으로)
-- 환자에게서 배우는 점들
-- 의료진의 솔직한 소감과 성찰
-- 구체적인 상담/치료 과정 설명
-- "이런 케이스는 정말 조심스럽거든요"
-- 환자와의 소통에서 느끼는 점
-- BGN만의 접근 방식 소개
-
-## 그래서 더 세심하게 봐드렸어요
-(**최소 5-6문단**, 개별 맞춤 케어 강조)
-- {material['usage_point']}를 중심으로 한 구체적 접근
-- 환자별 맞춤 상담 과정
-- "뭔가 이상한 게 있으면 언제든 연락주시라고..."
-- 세부적인 설명과 안내 과정
-- 환자의 질문과 의료진의 답변
-- 실제 치료/검사 경험담
-
-## 며칠 후에 연락이 왔어요
-(**최소 4-5문단**, 감동적인 후기)
-- 환자의 피드백과 변화된 모습
-- 구체적인 개선 사례와 만족도
-- "그 말을 듣는 순간 저도 모르게 울컥했습니다"
-- 일상생활의 구체적 변화
-- 주변 사람들의 반응
-- 의료진으로서의 보람
-
-## 생각해보니 당연한 일이었어요
-(**최소 4-5문단**, 겸손하고 따뜻하게)
-- "저희가 특별한 걸 한 건 아니에요"
-- 환자 중심 서비스의 당연함
-- BGN의 일상적인 케어 문화
-- 작은 배려의 큰 의미
-- 환자와 의료진의 상호 성장
-- 의료진의 사명감과 보람
-
-## 비슷한 고민을 하고 계신다면
-(**최소 4-5문단**, 강요 없는 따뜻한 조언)
-- "이게 별거 아닌 것 같아도 저는 중요하게 생각해요"
-- "무리하게 권하지는 않을 거예요"
-- "편하게 물어보세요" 분위기 조성
-- 작은 궁금증부터 시작하는 것의 중요성
-- BGN의 열린 상담 문화
-- 환자 스스로의 선택을 존중하는 자세
-
-## 마지막으로 하고 싶은 말
-(**최소 3-4문단**, 진심 어린 마무리)
-- 핵심 메시지 요약
-- 환자에 대한 진솔한 마음
-- "혹시 궁금한 게 있으시면 언제든 연락주세요"
-- BGN 의료진의 다짐과 약속
-- 독자에게 전하는 따뜻한 메시지
-
-이상으로 **BGN밝은눈안과(잠실점)** {staff_role} **{staff_name}**이었습니다. 오늘도 여러분의 소중한 눈을 생각하며... [자연스러운 마무리 인사]
-
-⚠️ BGN 절대 준수사항:
-- **반드시 {config['min_chars']}자 이상 작성** (미달 절대 금지)
-- **다양한 종결어미 자연스럽게 혼용** (해요/습니다/죠/거든요/더라고요 등)
-- **BGN 고유 화자 설정 유지** ({staff_role} {staff_name}의 1인칭 시점)
-- **병원 홍보나 영업성 멘트 절대 금지** (자연스러운 경험담 중심)
-- **감정 표현과 구어체** 적절히 사용 ({':), ㅠㅠ, ...' if use_emotions else '절제된 표현'})
-- **강요 없는 따뜻한 조언** 톤 유지
-- **구체적 사례와 개인 경험** 풍부하게 포함
-- **BGN 브랜드 정체성** (따뜻함, 전문성, 신뢰) 자연스럽게 표현
-- 각 섹션별로 **충분한 분량 확보** (4-6문단씩)
-- **즉시 발행 가능한 완성형** 구조
+- 키워드: {', '.join(material.get('keywords', [])[:8])}
 """
+    res = self.client.chat.completions.create(
+        model=self.config["model"],
+        messages=[
+            {"role": "system", "content": "따뜻하고 담백한 의료 콘텐츠 작가."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=temperature,
+        top_p=top_p,
+        max_tokens=max_tokens
+    )
+    return res.choices[0].message.content
 
-        max_attempts = 3
-        for attempt in range(max_attempts):
-            try:
-                response = self.client.chat.completions.create(
-                    model=self.config["model"],
-                    messages=[
-                        {
-                            "role": "system", 
-                            "content": f"""당신은 BGN밝은눈안과 전속 블로그 작가입니다. 
+def _style_pass(self, text, staff_role, staff_name, shortage, temperature, top_p, max_tokens):
+    prompt = f"""
+다음 글을 BGN 톤으로 자연스럽게 보강하세요.
 
-🎯 핵심 미션: 
-- **절대적으로 {config['min_chars']}자 이상의 BGN 브랜드 톤앤매너 블로그 작성**
-- BGN 고유의 따뜻하고 자연스러운 1인칭 실무자 시점 구현
-- 실제 인터뷰 내용을 BGN 스타일로 생생하게 재구성
-- 즉시 발행 가능한 완성도 높은 콘텐츠
+- 병원: BGN밝은눈안과(잠실점)
+- 화자: {staff_role} {staff_name} 1인칭
+- 목표: 과도한 반복 없이 내용의 구체성/경험담을 추가하여 {shortage}자 이상 보강
+- 금지: 과장된 치료효과 단정, 후기형 홍보, 과도한 이모티콘
+- 유지: 기존 문장과 흐름
 
-🏥 BGN 브랜드 정체성:
-- **따뜻함**: 기계적이지 않은 인간적 케어
-- **전문성**: 의학적 정확성과 신뢰성
-- **진솔함**: 과장 없는 솔직하고 담담한 소통
-- **접근성**: 부담 없이 편하게 다가갈 수 있는 분위기
+원문:
+{text}
+"""
+    res = self.client.chat.completions.create(
+        model=self.config["model"],
+        messages=[
+            {"role": "system", "content": "세심한 카피에디터."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=temperature,
+        top_p=top_p,
+        max_tokens=max_tokens
+    )
+    return res.choices[0].message.content
 
-💬 BGN 톤앤매너 DNA:
-1. **자연스러운 말투**: 다양한 종결어미 혼용으로 기계적 반복 방지
-2. **경험 기반 서사**: "오늘 이런 일이 있었어요" 스타일의 일상 에피소드
-3. **겸손한 전문성**: "저희도 많이 배워요", "특별한 건 아니에요"
-4. **담담한 공감**: 과장 없는 진솔한 감정 표현
-5. **강요 없는 조언**: "무리하게 권하지 않을 거예요"
-6. **열린 소통**: "편하게 물어보세요", "작은 것도 좋으니까요"
-
-✍️ BGN 글쓰기 철학:
-1. **분량 절대 보장**: 각 문단 5-8문장으로 풍부하게
-2. **구체성 극대화**: 일반론 대신 개인 경험과 구체적 사례
-3. **자연스러운 완성도**: 수정 없이 바로 발행 가능한 수준
-4. **브랜드 일관성**: BGN의 따뜻하고 전문적인 이미지 유지
-5. **독자 중심**: 환자의 시선에서 불안 해소와 자연스러운 선택 유도
-
-🚫 BGN 절대 금지사항:
-- {config['min_chars']}자 미만 작성
-- 단조로운 종결어미 반복 (해요만 계속 사용 등)
-- 형식적이거나 구조적인 제목
-- 과도한 영업성 멘트나 병원 방문 유도
-- "보통", "대부분" 같은 모호한 표현
-- BGN 브랜드 정체성에 맞지 않는 톤"""
-                        },
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.7,
-                    max_tokens=config['max_tokens']
-                )
-                
-                blog_content = response.choices[0].message.content
-                char_count = len(blog_content)
-                
-                # BGN 스타일 검증
-                bgn_validation = self._validate_bgn_style(blog_content, config['min_chars'])
-                
-                if char_count >= config['min_chars']:
-                    st.success(f"✅ BGN 스타일 블로그 완성! (총 {char_count:,}자)")
-                    
-                    if bgn_validation["bgn_score"] >= 0.7:
-                        st.info(f"🎯 BGN 톤앤매너: 우수 ({bgn_validation['bgn_score']:.1f}/1.0)")
-                    else:
-                        st.warning(f"🎯 BGN 톤앤매너: 개선필요 ({bgn_validation['bgn_score']:.1f}/1.0)")
-                        st.write("개선사항:", bgn_validation['improvement_suggestions'])
-                    
-                    return blog_content
-                else:
-                    if attempt < max_attempts - 1:
-                        shortage = config['min_chars'] - char_count
-                        st.warning(f"⚠️ 글자수 부족 ({char_count:,}자/{config['min_chars']:,}자) - BGN 스타일로 재생성 중... ({attempt+2}/{max_attempts})")
-                        
-                        # BGN 스타일 강화 요청
-                        prompt += f"\n\n**긴급 BGN 요청**: 현재 {char_count}자로 {shortage}자가 부족합니다. BGN 톤앤매너를 유지하면서 각 섹션을 더욱 상세하고 풍부하게 작성하여 반드시 {config['min_chars']}자를 넘겨주세요. 특히 BGN만의 따뜻한 에피소드와 구체적인 경험담을 더 많이 포함해주세요."
-                    else:
-                        st.error(f"❌ {max_attempts}번 시도했지만 BGN 목표 글자수 달성 실패 (현재 {char_count}자)")
-                        st.warning("💡 생성된 내용을 제공하니 BGN 스타일로 추가 편집해주세요.")
-                        return blog_content
-                        
-            except Exception as e:
-                if attempt < max_attempts - 1:
-                    st.warning(f"BGN 블로그 생성 중 오류 - 재시도 중... ({attempt+2}/{max_attempts}): {str(e)}")
-                else:
-                    st.error(f"BGN 블로그 생성 실패: {str(e)}")
-                    raise e
-        
-        return blog_content
     
     def _validate_bgn_style(self, blog_content, min_chars):
         """BGN 톤앤매너 스타일 검증"""

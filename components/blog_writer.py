@@ -49,6 +49,9 @@ def display_selected_material():
 def configure_blog_settings():
     """블로그 작성 설정 (BGN 톤앤매너 중심)"""
     st.subheader("📝 블로그 작성 설정")
+    st.session_state.creativity = st.slider("창의성 (temperature)", 0.0, 1.2, 0.9, 0.1)
+    st.session_state.top_p = st.slider("다양성 (top_p)", 0.1, 1.0, 0.9, 0.05)
+
     
     st.info("💡 **모든 블로그는 BGN 고유의 자연스러운 톤앤매너로 2,000자 이상 작성됩니다**")
     
@@ -153,14 +156,17 @@ def generate_with_ai():
                 'use_empathy': st.session_state.get('use_empathy', True)
             }
             
+            # generate_with_ai()에서 analyzer.generate_blog_content_bgn_style 호출 부분 수정
             blog_content = analyzer.generate_blog_content_bgn_style(
                 st.session_state.selected_material,
                 st.session_state.blog_style,
                 st.session_state.content_length,
                 st.session_state.additional_request,
-                bgn_style_params
+                bgn_style_params,
+                temperature=st.session_state.get("creativity", 0.9),
+                top_p=st.session_state.get("top_p", 0.9),
             )
-            
+
             progress_bar.progress(90)
             status_text.text("🔍 BGN 톤앤매너 품질 검증 중...")
             time.sleep(0.5)
