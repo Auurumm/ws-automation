@@ -1,7 +1,30 @@
 # components/material_analysis.py
 import streamlit as st
-from config import CONTENT_TYPES, OPENAI_CONFIG
+
+# ---- 안전하게 config 불러오기 (없거나 충돌해도 기본값으로 진행) ----
+try:
+    import importlib
+    cfg = importlib.import_module("config")
+    CONTENT_TYPES = getattr(cfg, "CONTENT_TYPES", [
+        "BGN 환자 에피소드형",
+        "BGN 검사·과정형",
+        "BGN 센터 운영/분위기형",
+        "BGN 직원 성장기형",
+        "BGN 환자 질문 FAQ형",
+    ])
+    OPENAI_CONFIG = getattr(cfg, "OPENAI_CONFIG", {"model": "gpt-4o-mini", "api_key": ""})
+except Exception:
+    CONTENT_TYPES = [
+        "BGN 환자 에피소드형",
+        "BGN 검사·과정형",
+        "BGN 센터 운영/분위기형",
+        "BGN 직원 성장기형",
+        "BGN 환자 질문 FAQ형",
+    ]
+    OPENAI_CONFIG = {"model": "gpt-4o-mini", "api_key": ""}
+
 from utils.ai_analyzer import AIAnalyzer
+
 
 def render_material_analysis_page():
     st.header("② 인터뷰 기반 소재 분석")
@@ -51,6 +74,6 @@ def render_material_analysis_page():
         if not items or idx > len(items):
             st.error("선택 번호가 올바르지 않습니다.")
         else:
-            st.session_state["selected_material"] = {"type": sel_tab, "data": items[idx-1]}
+            st.session_state["selected_material"] = {"type": sel_tab, "data": items[idx - 1]}
             st.session_state["step"] = 3
             st.success("선택되었습니다. 상단 탭에서 ③ 글쓰기 페이지로 이동하세요.")
