@@ -332,3 +332,14 @@ BGN_TONE_CHECKLIST = {
         "BGN 브랜드와 맞지 않는 톤"
     ]
 }
+
+
+# 기존 코드 호환성을 위한 변수들 (BGN 설정을 기본값으로 사용)
+CONTENT_TYPES = BGN_CONTENT_TYPES
+QUALITY_CONFIG = BGN_QUALITY_CONFIG
+
+# 기존 블로그 설정 호환성
+BLOG_CONFIG.update({
+    "styles": BLOG_CONFIG["bgn_styles"],
+    "lengths": BLOG_CONFIG["bgn_lengths"]
+})
